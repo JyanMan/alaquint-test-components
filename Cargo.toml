@@ -1,8 +1,18 @@
 [package]
-name = "test_comp"
+name = "alaquint_comps"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy_ecs = "0.17.3"
-serialport = "4.8.1"
+bevy_ecs = "0.18.0"
+bitflags = "2.5"
+paste = "1.0"
+# rand = "0.8"
+
+# bevy_app = "0.18.0"
+# bevy_tasks = "0.18.0"
+# bevy-async-ecs = "0.10.0"
+# serialport = "4.8.1"
+tokio-serial = "5.4.5"
+static_cell = "2.1.1"
+tokio = { version = "1.49.0", features = ["full"] }

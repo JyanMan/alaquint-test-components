@@ -1,71 +1,70 @@
-use bevy_ecs::prelude::*;
 use std::sync::Mutex;
 use std::vec::Vec;
+// use std::io;
+use tokio_serial::{SerialPort, SerialPortBuilderExt, SerialStream};
+use tokio::io;
 
-/// `usage`:
+
 /// ```
 /// let serial = SerialPort::new("/dev/ttyUSB0", 115200);
-/// let bytes = serial.read_bytes();
+/// let bytes = serial.read_bytes().await?;
 /// ```
-/// `manual usage of serialport crate`
-/// ```
-/// serial.port_ref().lock().read();
-/// serial.port_ref().lock().some_other_func();
-/// ```
-type MutexSerialPort = Mutex<Box<dyn serialport::SerialPort>>;
+pub struct Serial(SerialStream);
 
-#[derive(Component)]
-pub struct Serial(Option<MutexSerialPort>);
-
+// WARNING: code is still inefficient due to locks on each use
 #[allow(unused)]
 impl Serial {
-    pub fn new(path: &str, baud_rate: u32) -> Self {
-        let port = serialport::new(path, baud_rate).open(); 
+    pub fn new(path: &str, baud_rate: u32) -> io::Result<Self> {
+        let port = tokio_serial::new(path, baud_rate)
+            .open_native_async(); 
         if let Ok(port) = port {
-            Self(Some(Mutex::new(port)))
+            Ok(Self(port))
         }
         else {
-            Self(None)
+            Err(std::io::Error::new(std::io::ErrorKind::NotConnected, "Port not connected"))
         }
     }
 
     pub fn init_port(&mut self, path: &str, baud_rate: u32) -> &Self {
-        let port = serialport::new(path, baud_rate).open(); 
+        let port = tokio_serial::new(path, baud_rate).
+            open_native_async(); 
         if let Ok(port) = port {
-            self.0 = Some(Mutex::new(port))
+            self.0 = port
         }
         self
     }
 
-    pub fn port_ref(&self) -> Option<&MutexSerialPort> {
-        self.0.as_ref()
+    pub fn port_ref(&self) -> &SerialStream {
+        &self.0
     } 
 
-    pub fn port_mut(&mut self) -> Option<&mut MutexSerialPort> {
-        self.0.as_mut()
+    pub fn port_mut(&mut self) -> &mut SerialStream {
+        &mut self.0
     } 
-    
-    pub fn read_bytes(&self, buff_size: usize) -> Vec<u8> {
+
+    pub fn try_read_bytes(&mut self, buff_size: usize) -> io::Result<Vec<u8>> {
         let mut buffer = vec![0u8; buff_size];
-        if let Some(port) = &self.0 {
-            let _ = port.lock().unwrap().read(&mut buffer[..]).unwrap();
-        }
-        buffer
+        let port = &mut self.0;
+        let _ = port.try_read(&mut buffer[..])?;
+        Ok(buffer)
     }
 
-    // this uses write_all... use .write for more control
-    pub fn write_bytes(&self, to_send: &[u8]) -> Result<(), std::io::Error> {
-        if let Some(port) = &self.0 {
-            port.lock().unwrap().write_all(to_send);
-            Ok(())
-        }
-        else {
-            Err(std::io::Error::new(std::io::ErrorKind::NotConnected, "Port not initialized"))
-        }
+    pub fn try_write_bytes(&mut self, to_send: &[u8]) -> io::Result<()> {
+        self.0.try_write(to_send)?;
+        Ok(())
+    }
+    
+    pub async fn read_bytes(&mut self, buff_size: usize) -> io::Result<Vec<u8>> {
+        use tokio::io::AsyncReadExt;
+        let mut buffer = vec![0u8; buff_size];
+        let port = &mut self.0;
+        let _ = port.read(&mut buffer[..]).await;
+        Ok(buffer)
     }
 
-    // using write_bytes allows for this check at the same time
-    pub fn port_connected(&self) -> bool {
-        self.0.is_some()
+    pub async fn write_bytes(&mut self, to_send: &[u8]) -> io::Result<()> {
+        use tokio::io::AsyncWriteExt;
+        self.0.write_all(to_send).await?;
+        Ok(())
     }
 }
