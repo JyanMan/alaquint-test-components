@@ -10,6 +10,7 @@ use static_cell::StaticCell;
 use std::ops::DerefMut;
 use alaquint_comps::serial::Serial;
 use async_trait::async_trait;
+use paste::paste;
 
 
 #[async_trait]
@@ -141,59 +142,44 @@ impl ChannelContainer {
     }
 }
 
+macro_rules! spawn_actors {
+    ($ch_cont:expr, $actors:expr, $($actor_type:ty),+ $(,)?) => {
+        $(
+            paste! {
+                let ([<sender_ $actor_type:snake>], [<receiver_ $actor_type:snake>])
+                    = mpsc::channel::<$actor_type>(1000);
+            }
+        )*
+        $(
+            paste! {
+                $ch_cont.add_sender([<sender_ $actor_type:snake>]);
+            }
+        )*
+        $(
+            paste! {
+                $actors.add_actor($ch_cont, [<receiver_ $actor_type:snake>]);
+            }
+        )*
+                
+    }
+}
+
 static CH_CONT: StaticCell<ChannelContainer> = StaticCell::new();
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    // let ch_cont = Arc::new(ChannelContainer::default());
     let ch_cont = CH_CONT.init(ChannelContainer::default());
     let mut actors = ActorsContainer::default();
 
-    // let mut senders: HashMap<MessageType, mpsc::Sender<Message>> = HashMap::new();
-    let (send_to_lidar_reader, rec_lidar_reader) = mpsc::channel::<LidarReader>(1000);
-    let (send_to_motor, rec_motor) = mpsc::channel::<Motor>(1000);
-
-    ch_cont.add_sender(send_to_lidar_reader);
-    ch_cont.add_sender(send_to_motor);
-
-    actors.add_actor(ch_cont, rec_lidar_reader);
-    actors.add_actor(ch_cont, rec_motor);
+    spawn_actors!(
+        ch_cont,
+        actors,
+        LidarReader,
+        Motor
+    );
 
     actors.await_actors().await?;
 
     
-    Ok(())
-}
-
-async fn actor_motor(
-    send: &ChannelContainer,
-    mut rec: mpsc::Receiver<Motor>,
-) -> io::Result<()> {
-
-    let motor_msg = rec.recv().await;
-    motor_msg.unwrap().parse();
-
-    Ok(())
-}
-
-async fn actor_pid_system(
-    send: &ChannelContainer,
-    mut rec: mpsc::Receiver<PidSystem>,
-) -> io::Result<()> {
-    const PACKET_HEADER: [u8; 2] = [0x02, 0x03];
-    if let Ok(mut serial) = Serial::new("/dev/ttyUSB0", 115200) {
-        let res_bytes = serial.read_bytes(20).await?;
-        println!("read data: {:?}", res_bytes);
-        serial.write_bytes(&PACKET_HEADER).await?;
-    }
-    Ok(())
-}
-
-async fn actor_lidar_reader_debug(
-    send: &ChannelContainer,
-    mut rec: mpsc::Receiver<LidarReader>,
-) -> io::Result<()> {
-    let motor = send.get_sender::<Motor>().unwrap();
-    send.send_data(motor, Motor::GetRpm).await?;
     Ok(())
 }
