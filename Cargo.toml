@@ -8,6 +8,8 @@ async-trait = "0.1.89"
 bevy_ecs = "0.18.0"
 bitflags = "2.5"
 paste = "1.0"
+# to_snake_case = "0.1.1"
+alaquint_proc_macros = { version="0.1.0", path = "../alaquint_proc_macros" }
 # rand = "0.8"
 
 # bevy_app = "0.18.0"
