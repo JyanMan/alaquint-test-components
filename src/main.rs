@@ -21,113 +21,66 @@ use alaquint_comps::actor_system::{
 use async_trait::async_trait;
 use paste::paste;
 use alaquint_proc_macros::RequestMsg;
-// extern crate proc_macro;
-// use proc_macro::TokenStream;
-
-// #[proc_macro_derive(RequestMsg, attributes(request))]
-// pub fn derive_request_msg(main_t: TokenStream, send_t: TokenStream) -> TokenStream {
-//     "fn \"{item}\"() -> (oneshot::Sender<\"{send_t}\">, oneshot::Sender<\"{send_t}\">) {
-//         oneshot::channel::<\"{send_t}\">()
-//     }".parse().unwrap()
-// }
-
-#[derive(PartialEq, Eq, Hash, Clone)]
-enum LidarReaderMsg { }
 
 #[derive(Default)]
 struct LidarReader;
 
 #[async_trait]
 impl Actor for LidarReader {
-    type Msg = LidarReaderMsg;
-    
+   
     async fn run(
-        self,
         send: &ChannelContainer,
-        _rec: mpsc::Receiver<LidarReaderMsg>,
+        _rec: mpsc::Receiver<LidarReader>,
     ) -> io::Result<()> {
-        let _ = send.message::<Motor>(MotorMsg::SetName(String::from("BRODA"))).await;
-        // let (sender, rec) = oneshot::channel::<i32>();
-        // let _ = send.request::<Motor>(MotorMsg::GetRpm{reply: sender}).await;
-        let rpm = MotorMsg::get_rpm(send).await?;
-        // MotorMsg::get_rpm();
+        let _ = send.message(Motor::SetName(String::from("BRODA"))).await;
+        let rpm = Motor::get_rpm(send).await?;
+        let name = Motor::get_name(send).await?;
 
-        println!("lez go: {:?}", rpm);
-        // match MotorMsg::req_rpm(send).await {
-        //     Ok(v) => println!("received rpm: {:?}", v),
-        //     Err(err) => println!("unable to receive rpm: {:?}", err)
-        // }
+        println!("lez go: {:?}, with name: {:?}", rpm, name);
 
         Ok(())
     }
 }
 
-// #[derive(Clone)]
-#[derive(RequestMsg)]
-enum MotorMsg {
-    #[request(response = i32)]
-    GetRpm{reply: oneshot::Sender<i32>},
-    SetName(String),
-}
-
-impl MotorMsg {
-    // pub async fn get_rpm(send: &ChannelContainer) -> io::Result<i32> {
-    //     let (tx, rx) = oneshot::channel();
-    //     let _ = send.request::<Motor>(MotorMsg::GetRpm{reply: tx}).await;
-    //     match rx.await {
-    //        Ok(res) => Ok(res),
-    //        Err(e) => {
-    //             Err(io::Error::new(io::ErrorKind::Other, e.to_string()))
-    //         }
-    //     }
-    // }
-}
-
-
-struct Motor {
-    name: String,
-    rpm: i32
-}
-
 /// `NOTE` all methods are to not be used and are private
 /// this is to test the feasabily of an action-oriented design
 /// every call must be used via the enum values
-impl Default for Motor {
-    fn default() -> Self {
-        Self {
-            name: String::from("whatsoeverr"),
-            rpm: 10,
-        }
-    }
+// #[derive(Clone)]
+#[derive(RequestMsg)]
+enum Motor {
+    #[request(response = i32)]
+    GetRpm{reply: oneshot::Sender<i32>},
+    #[request(response = String)]
+    GetName{reply: oneshot::Sender<String>},
+    SetName(String),
 }
 
-impl Motor {
-    fn get_rpm(&self) -> i32 {
-        self.rpm
-    }
-}
 
 #[async_trait]
 impl Actor for Motor {
-    type Msg = MotorMsg;
+    // type Msg = MotorMsg;
     
     async fn run(
-        mut self,
-        send: &ChannelContainer,
-        mut rec: mpsc::Receiver<MotorMsg>,
+        _send: &ChannelContainer,
+        mut rec: mpsc::Receiver<Motor>,
     ) -> io::Result<()> {
+
+        let mut name = String::from("blabbers");
 
         loop {
             let motor_msg = rec.recv().await;
             match motor_msg.unwrap() {
-                MotorMsg::GetRpm{reply} => {
-                    println!("SOMEBODY ASKED FOR THE RPM");
-                    let _ = reply.send(self.get_rpm());
-                    // send.message::<LidarReader>()
+                Motor::GetName{reply} => {
+                    println!("SOMEBODY ASKED FOR THE NAME");
+                    let _ = reply.send(name.clone());
                 },
-                MotorMsg::SetName(new_name) => {
-                    self.name = new_name;
-                    println!("set new name to: {}", self.name);
+                Motor::GetRpm{reply} => {
+                    println!("SOMEBODY ASKED FOR THE RPM");
+                    let _ = reply.send(10);
+                },
+                Motor::SetName(new_name) => {
+                    name = new_name;
+                    println!("set new name to: {}", name);
                 }
             }
             
@@ -161,9 +114,9 @@ impl PidCmd {
 
 #[async_trait]
 impl Actor for PidSystem {
-    type Msg = PidSystem;
+    // type Msg = PidSystem;
     
-    async fn run(self, ch_cont: &ChannelContainer, mut rec: mpsc::Receiver<PidSystem>) -> io::Result<()> {
+    async fn run(ch_cont: &ChannelContainer, mut rec: mpsc::Receiver<PidSystem>) -> io::Result<()> {
 
         const PACKET_SIZE: usize = 20;
         const PACKET_HEADER: [u8; 2] = [0xAA, 0x55];

@@ -24,13 +24,13 @@ impl std::fmt::Display for ActorError {
 }
 
 #[async_trait]
-pub trait Actor: Send + Sync + Default + 'static {
-    type Msg;
+pub trait Actor: Sized + Send + Sync + 'static {
+    // type Msg;
     
     async fn run(
-        mut self,
+        // mut self,
         ch_cont: &ChannelContainer,
-        mut rec: mpsc::Receiver<Self::Msg>
+        mut rec: mpsc::Receiver<Self>
     ) -> io::Result<()>;
 }
 
@@ -40,15 +40,15 @@ pub struct ActorsContainer {
 }
 
 impl ActorsContainer {
-    pub fn create_channel<T: Actor>(buf_size: usize) -> (mpsc::Sender<T::Msg>, mpsc::Receiver<T::Msg>) {
-        mpsc::channel::<T::Msg>(buf_size)
+    pub fn create_channel<T: Actor>(buf_size: usize) -> (mpsc::Sender<T>, mpsc::Receiver<T>) {
+        mpsc::channel::<T>(buf_size)
     }
 
-    pub fn add_actor<T: Actor>(&mut self, ch_cont: &'static ChannelContainer, rec: mpsc::Receiver<T::Msg>) {
+    pub fn add_actor<T: Actor>(&mut self, ch_cont: &'static ChannelContainer, rec: mpsc::Receiver<T>) {
         // self.senders.insert(TypeId::of::<T>(), Box::new(sender));
         // let (sender, receiver) = mpsc::channel::<T>(1000);
-        let new_self = T::default();
-        let task_spawn = tokio::spawn(T::run(new_self, ch_cont, rec));
+        // let new_self = T::default();
+        let task_spawn = tokio::spawn(T::run(ch_cont, rec));
         self.actors.insert(TypeId::of::<T>(), task_spawn);
     } 
 
@@ -91,7 +91,7 @@ impl ChannelContainer {
     //     Ok(())
     // }
     
-    pub async fn request<T: Actor>(&self, msg: T::Msg) -> io::Result<()> {
+    pub async fn request<T: Actor>(&self, msg: T) -> io::Result<()> {
         if let Some(sender) = self.get_sender::<T>() {
             let _ = sender.send(msg).await;
             Ok(())
@@ -105,7 +105,7 @@ impl ChannelContainer {
         // }
     }
 
-    pub async fn message<T: Actor>(&self, msg: T::Msg) -> Result<(), ActorError> {
+    pub async fn message<T: Actor>(&self, msg: T) -> Result<(), ActorError> {
         if let Some(sender) = self.get_sender::<T>() {
             let _ = sender.send(msg).await
                 .map_err(|_| ActorError::SendFailed);
@@ -116,14 +116,14 @@ impl ChannelContainer {
         }
     }
     
-    pub fn add_sender<T: Actor>(&mut self, sender: mpsc::Sender<T::Msg>) {
+    pub fn add_sender<T: Actor>(&mut self, sender: mpsc::Sender<T>) {
         self.senders.insert(TypeId::of::<T>(), Box::new(sender));
     } 
 
-    pub fn get_sender<T: Actor>(&self) -> Option<&mpsc::Sender<T::Msg>> {
+    pub fn get_sender<T: Actor>(&self) -> Option<&mpsc::Sender<T>> {
         self.senders
             .get(&TypeId::of::<T>())
-            .and_then(|s| s.downcast_ref::<mpsc::Sender<T::Msg>>())
+            .and_then(|s| s.downcast_ref::<mpsc::Sender<T>>())
     }
 
     pub async fn send_data<T: 'static + Any>(
