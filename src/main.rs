@@ -28,13 +28,13 @@ struct LidarReader;
 #[async_trait]
 impl Actor for LidarReader {
    
-    async fn run(
-        send: &ChannelContainer,
+    async fn handler(
+        channel: &ChannelContainer,
         _rec: mpsc::Receiver<LidarReader>,
     ) -> io::Result<()> {
-        let _ = send.message(Motor::SetName(String::from("BRODA"))).await;
-        let rpm = Motor::get_rpm(send).await?;
-        let name = Motor::get_name(send).await?;
+        let _ = channel.message(Motor::SetName(String::from("BRODA"))).await;
+        let rpm = channel.request(Motor::get_rpm()).await?;
+        let name = channel.request(Motor::get_name()).await?;
 
         println!("lez go: {:?}, with name: {:?}", rpm, name);
 
@@ -58,9 +58,7 @@ enum Motor {
 
 #[async_trait]
 impl Actor for Motor {
-    // type Msg = MotorMsg;
-    
-    async fn run(
+    async fn handler(
         _send: &ChannelContainer,
         mut rec: mpsc::Receiver<Motor>,
     ) -> io::Result<()> {
@@ -85,7 +83,6 @@ impl Actor for Motor {
             }
             
         }
-        // Ok(())
     }
 }
 
@@ -116,7 +113,7 @@ impl PidCmd {
 impl Actor for PidSystem {
     // type Msg = PidSystem;
     
-    async fn run(ch_cont: &ChannelContainer, mut rec: mpsc::Receiver<PidSystem>) -> io::Result<()> {
+    async fn handler(ch_cont: &ChannelContainer, mut rec: mpsc::Receiver<PidSystem>) -> io::Result<()> {
 
         const PACKET_SIZE: usize = 20;
         const PACKET_HEADER: [u8; 2] = [0xAA, 0x55];
